@@ -65,7 +65,7 @@ with tab1:
             st.error(f"CSV kunne ikke analyseres: {e}")
 
     if st.button("Indlæs eksempeldata"):
-        sample = pd.read_csv("data/sample_matches.csv")
+       sample = pd.read_csv("tips_value_engine/data/sample_matches.csv")
         st.session_state["sample_analysis"] = analyze_matches(sample)
     if "sample_analysis" in st.session_state:
         st.dataframe(st.session_state["sample_analysis"], use_container_width=True, hide_index=True)
