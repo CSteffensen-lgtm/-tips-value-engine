@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from connectors.odds_api import fetch_soccer_odds
 from engine.value import analyze_matches
 from engine.backtest import brier_score
+from pathlib import Path
 
 load_dotenv()
 st.set_page_config(page_title="Tips Value Engine", page_icon="⚽", layout="wide")
@@ -65,10 +66,14 @@ with tab1:
             st.error(f"CSV kunne ikke analyseres: {e}")
 
     if st.button("Indlæs eksempeldata"):
-       sample = pd.read_csv("tips_value_engine/data/sample_matches.csv")
+        base_dir = Path(__file__).resolve().parent
+        sample_path = base_dir / "data" / "sample_matches.csv"
+        sample = pd.read_csv(sample_path)
         st.session_state["sample_analysis"] = analyze_matches(sample)
+
     if "sample_analysis" in st.session_state:
         st.dataframe(st.session_state["sample_analysis"], use_container_width=True, hide_index=True)
+    
 
 with tab2:
     st.subheader("Spillerpopularitet")
