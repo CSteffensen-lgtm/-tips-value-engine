@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 
 from connectors.odds_api import fetch_soccer_odds
 from engine.value import analyze_matches
-from engine.coupon import optimize_coupon
 from engine.backtest import brier_score
 
 load_dotenv()
