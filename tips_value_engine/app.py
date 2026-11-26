@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from connectors.odds_api import fetch_soccer_odds
 from engine.value import analyze_matches
 from engine.backtest import brier_score
+from connectors.danskespil import parse_danskespil_payload, save_snapshot, snapshot_count
+import json
 from pathlib import Path
 
 load_dotenv()
@@ -24,7 +26,7 @@ with st.sidebar:
         "soccer_france_ligue_one":"Ligue 1"}[x])
     st.caption("Odds kræver en The Odds API-nøgle i .env. Spillerprocenter importeres separat.")
 
-tab1, tab2, tab3, tab4 = st.tabs(["Live analyse", "Spillerprocenter", "Kuponbygger", "Backtest"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Live analyse", "Danske Spil-data", "Spillerprocenter", "Kuponbygger", "Backtest"])
 
 @st.cache_data(ttl=300, show_spinner=False)
 def load_live(key, league):
@@ -66,16 +68,36 @@ with tab1:
             st.error(f"CSV kunne ikke analyseres: {e}")
 
     if st.button("Indlæs eksempeldata"):
-        base_dir = Path(__file__).resolve().parent
-        sample_path = base_dir / "data" / "sample_matches.csv"
+        sample_path = Path(__file__).resolve().parent / "data" / "sample_matches.csv"
         sample = pd.read_csv(sample_path)
         st.session_state["sample_analysis"] = analyze_matches(sample)
-
     if "sample_analysis" in st.session_state:
         st.dataframe(st.session_state["sample_analysis"], use_container_width=True, hide_index=True)
-    
 
 with tab2:
+    st.subheader("Danske Spil – dataindsamling")
+    st.write("Første connector-version kan parse og gemme kupon- og kampdata. Automatisk live-hentning er endnu ikke slået til, fordi API-host, kupon-discovery og adgangsvilkår skal verificeres på tværs af kuponformater.")
+    st.metric("Gemte data-snapshots", snapshot_count())
+    st.markdown("#### Importér rå API-svar til validering")
+    st.caption("Upload JSON-responsen fra pools-endpointet og events-by-ids-endpointet. Fjern personlige oplysninger og eventuelle tokens/headers; upload aldrig cookies eller loginoplysninger.")
+    pool_json = st.file_uploader("Pools JSON", type=["json"], key="ds_pool_json")
+    events_json = st.file_uploader("Events-by-ids JSON", type=["json"], key="ds_events_json")
+    if pool_json and events_json:
+        try:
+            pool_payload = json.load(pool_json)
+            events_payload = json.load(events_json)
+            metadata, ds_matches = parse_danskespil_payload(pool_payload, events_payload)
+            st.success(f"Kupondata genkendt: {metadata.get('name')} · {metadata.get('type')} · {len(ds_matches)} kampe")
+            st.json({k: v for k, v in metadata.items() if k != "poolPrizes"})
+            st.dataframe(ds_matches, use_container_width=True, hide_index=True)
+            if st.button("Gem snapshot i historikken", type="primary"):
+                sid = save_snapshot(metadata, ds_matches)
+                st.success(f"Snapshot gemt (ID {sid}).")
+        except Exception as e:
+            st.error(f"Kunne ikke parse Danske Spil-data: {e}")
+    st.info("Næste trin er at bekræfte de præcise offentlige request-URL'er og om de kan bruges uden login. Vi automatiserer ikke adgang via cookies, MitID eller private sessioner.")
+
+with tab3:
     st.subheader("Spillerpopularitet")
     st.write("Indlæs de faktiske 1/X/2-procenter fra den aktuelle Tips-kupon. Vi holder dem adskilt fra bookmakerodds.")
     pop_file = st.file_uploader("Upload spillerprocenter CSV", type=["csv"], key="pop_csv")
@@ -92,7 +114,7 @@ with tab2:
         except Exception as e:
             st.error(str(e))
 
-with tab3:
+with tab4:
     st.subheader("Kuponbygger")
     st.write("MVP-optimering: vælg udfald med højeste modelværdi under et fast række-budget. R/U-garantier håndteres først, når konkrete officielle systemnøgler er indlæst.")
     n = st.number_input("Antal kampe", min_value=4, max_value=13, value=13)
@@ -102,7 +124,7 @@ with tab3:
     if st.button("Vis optimeringsprincip"):
         st.write("Vi rangerer først kampudfaldene efter estimeret edge og popularitetsgab. Derefter prioriteres garderinger dér, hvor usikkerheden er størst, indtil budgettet er brugt.")
 
-with tab4:
+with tab5:
     st.subheader("Historisk backtest")
     hist = st.file_uploader("Upload backtest CSV", type=["csv"], key="backtest_csv")
     st.code("p1,px,p2,result\n0.50,0.25,0.25,1\n0.30,0.40,0.30,X", language="csv")
